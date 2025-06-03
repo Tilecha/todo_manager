@@ -1,7 +1,18 @@
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes, ApplicationBuilder
 import json
 import os
 from datetime import date
 DATA_PATH = os.path.join(os.path.dirname(__file__), "data.json")    
+
+ASK_TASK = 1
+ASK_TAGS = 2
+DELETE_STATE = 3
+EDIT_STATE = 4
+CLEAN_CONFIRM = 5
+EDIT_TAGS = 6
+FILTER_BY_TAG_STATE = 7
+DONE_OR_NOT_STATE = 8
 
 def load_tasks():
 
@@ -19,216 +30,325 @@ def load_tasks():
 
 def save_tasks(memory):
     with open(DATA_PATH, "w") as f:
-            json.dump(memory,f)
+            json.dump(memory,f,ensure_ascii=False, indent=2)
 
-def is_empty(memory, message="Список пуст."):
-
+def is_empty(memory):
     if not memory:
-        print(message)
         return True
     
     return False
 
-def done_com(memory):
 
-    if is_empty(memory): return    
 
-    view_com(memory)
+async def add_receive_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    task_text = update.message.text.strip()
 
-    try:
-
-        number = int(input("Какой элемент списка хотите удалить?(Введите 0 для отмены) "))-1
-
-        if 0 <= number < len(memory):
-            memory[number]["done"] = not memory[number]["done"]
-            save_tasks(memory)
-            print("Статус задачи изменён.")
-
-        elif number == -1:
-            print("Действие отменено")
-
-        else:
-            print("Ошибка: такого элемента нет.")
-
-    except ValueError:
-        print("Введите корректное число.")
-
-def filter_by_tag(memory):
-
-    if is_empty(memory): return
-
-    tag = input("Введите тег для поиска: ").strip()
-
-    if not tag:
-        print("Тег не должен быть пустым.")
-        return
-
-    filtered_tasks = []
-
-    for task in memory:
-        if tag in task["tags"]:
-            filtered_tasks.append(task)
-
-    if filtered_tasks:
-        print(f"Найдено задач с тегом '{tag}':")
-
-        for i, task in enumerate(filtered_tasks, 1):
-            status = "✅" if task["done"] else "❌"
-            tags = ", ".join(task["tags"]) if task["tags"] else "Без тегов"
-            print(f"{i}. {status} {task['text']} (теги: {tags})")
-
-    else:
-        print(f"Задач с тегом '{tag}' не найдено.")
-
-def new_com(memory):
-
-    text = input("Добавьте задачу: ").strip()
-
-    if not text:
-        print("Пустую задачу нельзя добавить.")
-        return
+    if not task_text:
+        await update.message.reply_text("Задача не может быть пустой. Пожалуйста, введите текст задачи.")
+        return ASK_TASK
     
-    tags_input = input("Добавьте теги (через запятую, если нужно. Нажмите Enter если не желаете добавлять теги): ").strip()
+    context.user_data["task_text"] = task_text
+    await update.message.reply_text("Добавь теги через запятую (/none для пропуска)")
+    return ASK_TAGS
 
+async def add_receive_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tags_text = update.message.text.strip()
+    tags = []
 
-    tags = [tag.strip() for tag in tags_input.split(",")] if tags_input else []
+    if tags_text != '/none':
+        tags = [tag.strip() for tag in tags_text.split(",") if tag.strip()]
+
+    task_text = context.user_data.get("task_text", "Без названия")
+
+    tasks = load_tasks()
+
     new_task = {
-        "text": text,
+        "text": task_text,
         "done": False,
         "created": date.today().isoformat(),
         "tags": tags
     }
-    memory.append(new_task)
-    save_tasks(memory)
-    print("Задача добавлена.")
 
-def del_com(memory):
+    tasks.append(new_task)
+    save_tasks(tasks)
 
-    if is_empty(memory): return
+    await update.message.reply_text(f"Задача добавлена: {new_task['text']} с тегами: {', '.join(tags) if tags else 'нет'}")
+    context.user_data.clear()
+    return ConversationHandler.END
+
+async def del_receive_number(update: Update,context: ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+
+    text = update.message.text.strip()
+
+    if not text.isdigit():
+        await update.message.reply_text("Пожалуйста, введи номер задачи числом.")
+        return DELETE_STATE
     
-    view_com(memory)
+    task_index = int(text)-1
 
-    try:
-
-        number = int(input("Какой элемент списка хотите удалить?(Введите 0 для отмены) "))-1
-
-        if 0 <= number < len(memory):
-            removed = memory.pop(number)
-            save_tasks(memory)
-            print(f"Удалено: {removed}")
-
-        elif number == -1:
-            print("Действие отменено")
-
-        else:
-            print("Ошибка: такого элемента нет.")
-
-    except ValueError:
-        print("Введите корректное число.")
-
-def edit_com(memory):
-    if is_empty(memory): return
+    if task_index < 0 or task_index >= len(tasks):
+        await update.message.reply_text("Неверный номер задачи. Попробуй снова.")
+        return DELETE_STATE
     
-    view_com(memory)
+    removed_task = tasks.pop(task_index)
+    save_tasks(tasks)
 
-    try:
+    await update.message.reply_text(f"Задача удалена: {removed_task['text']}")
 
-        number = int(input("Какой элемент списка хотите редактировать?(Введите 0 для отмены) ")) - 1
+    return ConversationHandler.END
 
-        if 0 <= number < len(memory):
-            new_text = input("Введите новый текст:").strip()
+async def clean_confirm(update:Update,context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().lower()
 
-            if new_text:
-                memory[number]["text"] = new_text
-                tags_input = input("Введите новые теги (через запятую, если нужно. Нажмите Enter если не желаете добавлять теги): ").strip()
-                tags = [tag.strip() for tag in tags_input.split(",")] if tags_input else []
-                memory[number]["tags"] = tags
-                save_tasks(memory)
-                print("Задача обновлена.")
+    if text == "да":
+        save_tasks([])
+        await update.message.reply_text("Список очищен.")
+        return ConversationHandler.END
+    elif text == 'нет':
+        await update.message.reply_text("Очистка отменена.")
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("Пожалуйста, напишите 'да' или 'нет'.")
+        return CLEAN_CONFIRM
 
-            else:
-                print("Пустую задачу нельзя добавить.")
+async def edit_receive_task(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    text = update.message.text.strip()
 
-        elif number == -1:
-            print("Действие отменено")
+    if not text.isdigit():
+        await update.message.reply_text("Пожалуйста, введи номер задачи числом.")
+        return EDIT_STATE
+    
+    task_index = int(text)-1
+    if task_index < 0 or task_index >= len(tasks):
+        await update.message.reply_text("Неверный номер задачи. Попробуй снова.")
+        return EDIT_STATE
+    task = tasks[task_index]
+    tags = task["tags"]
 
-        else:
-            print("Ошибка: такого элемента нет.")
+    
 
-    except ValueError:
-        print("Введите корректное число.")
+    context.user_data["edit_index"] = task_index
+    await update.message.reply_text("Введите новую задачу:")
+    return ASK_TASK
 
-def view_com(memory):
+async def edit_receive_new_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    task_index = context.user_data["edit_index"]
+    new_text = update.message.text.strip()
 
-    if is_empty(memory): return
+    tasks[task_index]["text"] = new_text
+    save_tasks(tasks)
 
-    for i, task in enumerate(memory, 1):
+    await update.message.reply_text(f"Задача обновлена: {new_text}")
+    await update.message.reply_text("Хотите изменить теги? (да/нет)")
+    return EDIT_TAGS
+
+async def filter_by_tag_receive_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    tag = update.message.text.strip().lower()
+    matched_tasks = []
+    for i, task in enumerate(tasks, 1):
+        for t in task.get("tags", []):
+            if t.lower() == tag:
+                matched_tasks.append((i,task))
+                break
+    if not matched_tasks:
+        await update.message.reply_text(f"Задач с тегом '{tag}' не найдено.")
+    else:
+        response = f"Задачи с тегом '{tag}':\n"
+        for i, task in matched_tasks:
+            status = "✅" if task["done"] else "❌"
+            tags = ", ".join(task["tags"]) if task["tags"] else "Без тегов"
+            response += f"{i}. {status} {task['text']}, теги: {tags}\n"
+        await update.message.reply_text(response)
+
+    return ConversationHandler.END
+
+async def done_or_not_receive_task(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    text = update.message.text.strip()
+
+    if not text.isdigit():
+        await update.message.reply_text("Пожалуйста, введи номер задачи числом.")
+        return DONE_OR_NOT_STATE
+    
+    task_index = int(text)-1
+    if task_index < 0 or task_index >= len(tasks):
+        await update.message.reply_text("Неверный номер задачи. Попробуй снова.")
+        return DONE_OR_NOT_STATE
+    tasks[task_index]["done"]=not tasks[task_index]["done"]
+    save_tasks(tasks)
+
+    status = "✅ Выполнено" if tasks[task_index]["done"] else "❌ Не выполнено"
+    await update.message.reply_text(f"Статус задачи изменён: {status} — {tasks[task_index]['text']}")
+    
+    return ConversationHandler.END 
+
+
+
+
+
+async def done_or_not(update: Update,context: ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    if is_empty(tasks):
+        await update.message.reply_text("Список пуст.")
+        return ConversationHandler.END
+    success = await send_task_list(update, context)
+    await update.message.reply_text('Напишите номер задачи')
+    return DONE_OR_NOT_STATE
+
+async def filter_by_tag(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    if is_empty(tasks):
+        await update.message.reply_text("Список пуст.")
+        return ConversationHandler.END
+    await update.message.reply_text('Введите теги для поиска')
+    return FILTER_BY_TAG_STATE
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Действие отменено.")
+    return ConversationHandler.END
+
+async def send_task_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    tasks = load_tasks()
+    
+    if is_empty(tasks): 
+        await update.message.reply_text("Список задач пуст.")
+        return False
+
+    response = ""
+
+    for i, task in enumerate(tasks, 1):
         status = "✅" if task["done"] else "❌"
         tags = ", ".join(task["tags"]) if task["tags"] else "Без тегов"
-        print(f"{i}. {status} {task['text']}, теги: {tags})")
-        
-def del_all_com(memory):
+        response += f"{i}. {status} {task['text']}, теги: {tags}\n"
 
-    if is_empty(memory): return
+    await update.message.reply_text(response)
+    return True
 
-    while True:
+async def del_task(update: Update,context: ContextTypes.DEFAULT_TYPE):
+    success = await send_task_list(update,context)
+    if not success:
+        return ConversationHandler.END
 
-        sure = input("Вы уверены? (y/n)").lower().strip()
+    await update.message.reply_text("Напиши номер задачи для удаления")
+    return DELETE_STATE
 
-        if sure == "y":
-            memory.clear()
-            save_tasks(memory)
-            print("список успешно очищен")
-            break   
+async def clean_start(update: Update,context: ContextTypes.DEFAULT_TYPE):
+    tasks = load_tasks()
+    if is_empty(tasks):
+        await update.message.reply_text("Список и так пуст.")
+        return ConversationHandler.END
+    await update.message.reply_text("Вы уверены? да/нет")
+    return CLEAN_CONFIRM
 
-        elif sure == "n":
-            print("Удаление отменено.")
-            break
+async def edit_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    success = await send_task_list(update, context)
+    if not success:
+        return ConversationHandler.END
 
-        else:
-            print("Неверный ввод. Введите 'y' (да) или 'n' (нет).")
+    await update.message.reply_text("Напишите номер задачи для редактирования")
+    return EDIT_STATE
 
-memory = load_tasks()
+async def edit_tags(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    answer = update.message.text.strip().lower()
+    if answer == "да":
+        await update.message.reply_text("Введите новые теги через запятую:")
+        return ASK_TAGS
+    elif answer == "нет":
+        await update.message.reply_text("Редактирование завершено.")
+        return ConversationHandler.END
+    else:
+        await update.message.reply_text("Пожалуйста, напишите 'да' или 'нет'.")
+        return EDIT_TAGS
 
-while True:
+async def view_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("/add - добавить\n /del - удалить\n /view - посмотреть список\n /clean - очистить список\n /cancel - отменить действие\n /edit - отредактировать\n /filter - искать по тегам\n /done - отметить выполненой")
+    return ConversationHandler.END
 
-    try:
+async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Напиши задачу")
+    return ASK_TASK
 
-        command = int(input(
-    "выберите действие: \n"
-    "1 - добавить\n"
-    "2 - удалить\n"
-    "3 - редактировать\n"
-    "4 - показать список\n"
-    "5 - очистить всё\n"
-    "6 - отметить выполненной/не выполненной\n"
-    "7 - выйти\n"
-    "8 - поиск по тегу\n"
-))
+async def start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+    "Привет! 👋 Я твой трекер задач.\n"
+    "Напиши /commands чтобы увидеть что умеет этот бот"
+)
+    return ConversationHandler.END
 
+add_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("add", add_start)],
+    states={
+        ASK_TASK: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_receive_task)],
+        ASK_TAGS: [MessageHandler(filters.TEXT, add_receive_tags)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-        if command == 1:
-            new_com(memory)
+done_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("done", done_or_not)],
+    states={
+        DONE_OR_NOT_STATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, done_or_not_receive_task)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-        elif command == 2:
-            del_com(memory)
+del_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("del", del_task)],
+    states={
+        DELETE_STATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_receive_number)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-        elif command == 3:
-            edit_com(memory)
+clean_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("clean", clean_start)],
+    states={
+        CLEAN_CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, clean_confirm)],
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-        elif command == 4:
-            view_com(memory)
+edit_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("edit", edit_task)],
+    states={
+        EDIT_STATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_receive_task)],
+        ASK_TASK: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_receive_new_text)],
+        EDIT_TAGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_tags)],
+        ASK_TAGS: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_receive_tags)],  # переиспользуем
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-        elif command == 5:
-            del_all_com(memory)
+filter_conv_handler = ConversationHandler(
+    entry_points=[CommandHandler("filter", filter_by_tag)],
+    states={
+        FILTER_BY_TAG_STATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, filter_by_tag_receive_task)]
+    },
+    fallbacks=[CommandHandler("cancel", cancel)],
+)
 
-        elif command == 6:
-            done_com(memory)
-        elif command == 7:
-            break
-        elif command == 8:
-            filter_by_tag(memory)
+app = ApplicationBuilder().token("YOUR TOKEN").build()
 
-    except ValueError:
-        print("ошибка, попробуй ещё раз")
-        
+app.add_handler(add_conv_handler)
+
+app.add_handler(del_conv_handler)
+
+app.add_handler(done_conv_handler)
+
+app.add_handler(filter_conv_handler)
+
+app.add_handler(clean_conv_handler)
+
+app.add_handler(edit_conv_handler)
+
+app.add_handler(CommandHandler("view", send_task_list))
+
+app.add_handler(CommandHandler("commands", view_commands))
+
+app.add_handler(CommandHandler("start", start_message))
+
+app.run_polling()
