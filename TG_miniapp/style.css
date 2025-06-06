@@ -1,0 +1,12 @@
+#content {
+    margin-top: 20px;
+    border:1px solid#ccc;
+    padding: 10px;
+    min-height: 100px;
+}
+button.active {
+  background-color: #4caf50; 
+  color: white;              
+  font-weight: bold;         
+  border: 2px solid #388e3c; 
+}
