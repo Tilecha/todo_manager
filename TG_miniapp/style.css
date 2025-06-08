@@ -1,12 +1,73 @@
-#content {
-    margin-top: 20px;
-    border:1px solid#ccc;
-    padding: 10px;
-    min-height: 100px;
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 10px;
+  background-color: #f0f0f0;
 }
-button.active {
-  background-color: #4caf50; 
-  color: white;              
-  font-weight: bold;         
-  border: 2px solid #388e3c; 
+
+header {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+input#search {
+  flex: 1;
+  padding: 8px;
+  font-size: 16px;
+}
+
+#clear-btn {
+  padding: 8px 12px;
+  font-size: 16px;
+  background: #ff5252;
+  color: white;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+#tasks {
+  margin-top: 20px;
+  min-height: 100px;
+}
+
+.task {
+  padding: 10px;
+  margin-bottom: 8px;
+  background: #fff;
+  border-left: 5px solid #2196f3;
+  cursor: pointer;
+  transition: background 0.3s;
+  border-radius: 4px;
+}
+
+.task:hover {
+  background: #e3f2fd;
+}
+
+.task.done {
+  text-decoration: line-through;
+  color: #777;
+  background: #dcedc8;
+  border-left-color: #4caf50;
+}
+
+#add-btn {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  font-size: 24px;
+  padding: 15px;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  z-index: 1000;
+}
+
+#add-btn:hover {
+  background: #1976d2;
 }

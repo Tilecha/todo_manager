@@ -1,21 +1,110 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Todo MiniApp</title>
-    <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Трекер задач</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Hi everyone</h1>
 
-    <button id="profile">Мой кабинет</button>
-    <button id="tasks">Мои задачи</button>
+  <header>
+    <input type="text" id="search" placeholder="Поиск по тегу..." />
+    <button id="clear-btn">Очистить</button>
+  </header>
 
-    <div id="filters"></div> 
-    <div id="content">something</div> 
+  <main id="tasks"></main>
 
-    <script src="script.js"></script>
+  <button id="add-btn">+</button>
+
+  <script>
+    let tasks = [];
+
+    async function fetchTasks() {
+      try {
+        const res = await fetch("/get_tasks");
+        tasks = await res.json();
+        renderTasks();
+      } catch (err) {
+        console.error("Ошибка загрузки задач:", err);
+      }
+    }
+
+    const taskContainer = document.getElementById('tasks');
+    const searchInput = document.getElementById('search');
+    const clearBtn = document.getElementById('clear-btn');
+    const addBtn = document.getElementById('add-btn');
+
+    function renderTasks(filter = '') {
+      taskContainer.innerHTML = '';
+
+      tasks
+        .filter(task => !filter || task.tags.includes(filter.toLowerCase()))
+        .forEach((task, index) => {
+          const div = document.createElement('div');
+          div.className = 'task' + (task.done ? ' done' : '');
+          div.innerText = task.text;
+
+          div.addEventListener('click', () => {
+            task.done = !task.done;
+            renderTasks(searchInput.value.trim());
+            Telegram.WebApp.sendData(JSON.stringify({ action: "done", index }));
+          });
+
+          let timeout;
+          div.addEventListener('touchstart', () => {
+            timeout = setTimeout(() => {
+              if (confirm("Удалить задачу?")) {
+                tasks.splice(index, 1);
+                renderTasks(searchInput.value.trim());
+                Telegram.WebApp.sendData(JSON.stringify({ action: "delete", index }));
+              }
+            }, 800);
+          });
+          div.addEventListener('touchend', () => clearTimeout(timeout));
+
+          taskContainer.appendChild(div);
+        });
+    }
+
+    searchInput.addEventListener('input', () => {
+      renderTasks(searchInput.value.trim());
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (confirm("Очистить все задачи?")) {
+        tasks = [];
+        renderTasks();
+        Telegram.WebApp.sendData(JSON.stringify({ action: "clean" }));
+      }
+    });
+
+    addBtn.addEventListener('click', () => {
+      const text = prompt("Введите задачу:");
+      if (text) {
+        const task = { text, tags: [], done: false };
+        tasks.push(task);
+        renderTasks(searchInput.value.trim());
+
+        fetch("/add_task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: task.text,
+            tags: task.tags
+          })
+        });
+
+        Telegram.WebApp.sendData(JSON.stringify({
+          action: "add",
+          text: task.text,
+          tags: task.tags
+        }));
+      }
+    });
+
+    fetchTasks();
+    Telegram.WebApp.ready();
+  </script>
 </body>
 </html>
-

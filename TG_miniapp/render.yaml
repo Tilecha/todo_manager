@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: task-tracker
+    env: python
+    buildCommand: ""
+    startCommand: "python main.py"
+    envVars:
+      - key: BOT_TOKEN
+        value: "твой_токен_бота"
