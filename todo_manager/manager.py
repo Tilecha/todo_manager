@@ -2,6 +2,13 @@ from flask import Flask, request, jsonify
 from datetime import date
 from commands.load import load_tasks
 from commands.save import save_tasks
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+from commands.open_webapp import open_webapp
+from commands.data import handle_webapp_data
+
+BOT_TOKEN = "8036426582:AAEkGwTAkzfPKPUn0pCMFV4jAkZKzy6mH34"
+
+
 
 app = Flask(__name__)
 
@@ -71,3 +78,16 @@ def filter_by_tag():
         if any(t.lower() == tag for t in task.get("tags", []))
     ]
     return jsonify(filtered)
+
+if __name__ == "__main__":
+    import os
+    port = int(os.environ.get("PORT", 5000))  # Render задаёт PORT как переменную окружения
+    app.run(host="0.0.0.0", port=port)
+
+
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+app.add_handler(CommandHandler("open", open_webapp))
+app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_webapp_data))
+
+app.run_polling()
