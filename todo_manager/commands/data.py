@@ -5,16 +5,6 @@ from telegram.ext import ContextTypes
 from datetime import date
 from commands.load import load_tasks
 from commands.save import save_tasks
-from telegram import Update, WebAppInfo, KeyboardButton, ReplyKeyboardMarkup
-from telegram.ext import ContextTypes
-
-async def open_webapp(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [KeyboardButton("Открыть трекер", web_app=WebAppInfo(url="https://todo-manager-n3vu.onrender.com"))]
-    ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("Нажми кнопку ниже, чтобы открыть трекер:", reply_markup=reply_markup)
-
 
 app = Flask(__name__)
 
