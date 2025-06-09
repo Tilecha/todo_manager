@@ -1,9 +1,9 @@
 services:
   - type: web
-    name: task-tracker
+    name: todo_manager
     env: python
     buildCommand: ""
-    startCommand: "python main.py"
+    startCommand: "python todo_manager/manager.py"
     envVars:
       - key: BOT_TOKEN
         value: "8036426582:AAEkGwTAkzfPKPUn0pCMFV4jAkZKzy6mH34"
